@@ -1,4 +1,3 @@
-// server.js
 // 讀取 .env
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '.env') });
@@ -23,38 +22,37 @@ const config = {
 const app = express();
 const client = new line.Client(config);
 
-// 健康檢查
 app.get('/', (_, res) => res.send('OK'));
+app.get('/webhook', (_, res) => res.send('OK'));
 
-// ✅ 讓 LINE 後台按「驗證」時（GET）也回 200
-app.get('/webhook', (req, res) => {
-  res.status(200).send('OK');
+app.post('/webhook', line.middleware(config), (req, res) => {
+  Promise
+    .all(req.body.events.map(handleEvent))
+    .then(result => res.json(result))
+    .catch(err => {
+      console.error(err);
+      res.status(500).end();
+    });
 });
 
-// ✅ 真正事件處理（POST）
-app.post('/webhook', line.middleware(config), async (req, res, next) => {
-  try {
-    const events = (req.body && req.body.events) ? req.body.events : [];
-    const results = await Promise.all(events.map(handleEvent));
-    res.json(results);
-  } catch (err) {
-    next(err);
-  }
-});
-
-// 最小可行的事件處理：回聲
+// 指令回覆：幣價 / 健身 / 日文
 async function handleEvent(event) {
-  if (event.type !== 'message' || event.message.type !== 'text') return Promise.resolve(null);
-  const text = (event.message.text || '').trim();
-  return client.replyMessage(event.replyToken, { type: 'text', text: `你說的是：${text}` });
+  if (event.type !== 'message' || event.message.type !== 'text') return null;
+
+  const text = event.message.text.trim();
+
+  if (text === '幣價') {
+    // 假資料，你可改串即時 API
+    return client.replyMessage(event.replyToken, { type: 'text', text: '目前 BTC 約 $65,000（假資料）' });
+  } else if (text === '健身') {
+    return client.replyMessage(event.replyToken, { type: 'text', text: '今天建議做 20 分鐘有氧 + 伏地挺身 3 組！' });
+  } else if (text === '日文') {
+    return client.replyMessage(event.replyToken, { type: 'text', text: 'こんにちは (Konnichiwa) → 你好' });
+  } else {
+    return client.replyMessage(event.replyToken, { type: 'text', text: `你說的是：${text}` });
+  }
 }
 
-// 全域錯誤處理
-app.use((err, req, res, _next) => {
-  console.error('[ERROR]', err);
-  res.status(500).end();
-});
-
-// 最後再監聽（Render 用動態 PORT）
-const port = process.env.PORT || 3000;
-app.listen(port, () => console.log(`✅ Server running on ${port}`));
+app.listen(process.env.PORT || 3000, () =>
+  console.log(`✅ Server running on ${process.env.PORT || 3000}`)
+);
