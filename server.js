@@ -66,9 +66,14 @@ async function pushTodayTask(userId) {
   });
 }
 
+// Webhook 處理：空 events 直接回 200，其餘照常處理
 app.post('/webhook', line.middleware(config), async (req, res) => {
+  const events = req.body.events;
+  // 如果 events 為空陣列（如 LINE 驗證），直接回 200
+  if (!events || events.length === 0) {
+    return res.status(200).json({ status: 'ok (no events)' });
+  }
   try {
-    const events = req.body.events;
     await Promise.all(events.map(event => handleEvent(event)));
     res.json({ status: 'ok' }); // 一定回200
   } catch (err) {
@@ -134,7 +139,6 @@ async function handleEvent(event) {
 
     // 手動推播（你自己在聊天室打 "推播" 來測試）
     if (text === '推播') {
-      // event.source.userId 只在 1:1 聊天有效，群組請用 event.source.groupId
       const userId = event.source.userId;
       if (!userId) {
         return client.replyMessage(event.replyToken, { type: 'text', text: '推播只能在個人聊天使用！' });
