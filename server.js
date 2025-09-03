@@ -47,7 +47,7 @@ function safeReplyMessage(replyToken, message) {
     console.log('⚠️ 缺少 LINE Bot 配置，無法發送訊息:', message);
     return Promise.resolve(null);
   }
-  return safeReplyMessage(replyToken, message);
+  return client.replyMessage(replyToken, message); // 修正：使用 client.replyMessage
 }
 
 // 獲取今日日期 (格式: YYYY-MM-DD)
