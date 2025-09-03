@@ -1,10 +1,11 @@
-// LINE Bot 增強版 - 包含 AI 對話、網路搜索和互動功能
-// Enhanced LINE Bot with AI conversation, web search and interactive features
+// LINE Bot 增強版 - 包含 Gemini AI 對話、網路搜索和互動功能
+// Enhanced LINE Bot with Gemini AI conversation, web search and interactive features
 
 const line = require('@line/bot-sdk');
 const express = require('express');
 const axios = require('axios');
 const cheerio = require('cheerio');
+const { GoogleGenerativeAI } = require('@google/generative-ai'); // 新增 Gemini AI 套件
 require('dotenv').config();
 
 // LINE Bot 配置
@@ -27,8 +28,19 @@ const app = express();
 // Task management system - stores user's daily tasks
 let tasks = {};
 
-// 簡單的 AI 回應系統 (可替換為真實的 AI API)
-// Simple AI response system (can be replaced with real AI API)
+// Gemini AI 功能開關和初始化
+// Gemini AI feature toggle and initialization
+const enableAIFeatures = process.env.ENABLE_AI_FEATURES === 'true';
+let genAI = null;
+if (enableAIFeatures && process.env.GEMINI_API_KEY) {
+  genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+  console.log('✅ Gemini AI 初始化成功');
+} else {
+  console.log('⚠️ Gemini AI 未啟用或未設定 API 密鑰');
+}
+
+// 簡單的 AI 回應系統 (作為 Gemini AI 的後備)
+// Simple AI response system (as fallback for Gemini AI)
 const aiResponses = {
   greeting: ['你好！我是你的智能助手 🤖', '嗨！有什麼我可以幫助你的嗎？ 😊', '哈囉！今天過得如何？ ✨'],
   weather: ['我無法直接查詢天氣，但建議你查看天氣應用程式 🌤️', '抱歉，我還沒有連接天氣服務，但你可以試試搜索"今日天氣" 🌦️'],
@@ -47,7 +59,7 @@ function safeReplyMessage(replyToken, message) {
     console.log('⚠️ 缺少 LINE Bot 配置，無法發送訊息:', message);
     return Promise.resolve(null);
   }
-  return client.replyMessage(replyToken, message); // 修正：使用 client.replyMessage
+  return client.replyMessage(replyToken, message);
 }
 
 // 獲取今日日期 (格式: YYYY-MM-DD)
@@ -68,10 +80,53 @@ function initTasks(today) {
   }
 }
 
-// 簡單的 AI 對話功能 (增強版)
-// Simple AI conversation feature (enhanced)
-function getAIResponse(text) {
+// 增強版 AI 對話功能 (使用 Gemini AI)
+// Enhanced AI conversation feature (using Gemini AI)
+async function getAIResponse(text) {
   const lowerText = text.toLowerCase();
+  
+  // 優先處理特定指令，避免耗費 AI 配額
+  // Priority handling for specific commands to avoid using AI quota
+  if (lowerText === '幫助' || lowerText === 'help' || 
+      lowerText === '任務' || lowerText === '查看任務' || 
+      lowerText === '統計' || lowerText === '貼圖' || 
+      lowerText === '時間' || lowerText.startsWith('完成 ') || 
+      lowerText.startsWith('取消 ') || lowerText.startsWith('備註 ') ||
+      lowerText.startsWith('清除備註 ') || lowerText.startsWith('搜索 ')) {
+    // 返回 null 表示這是一個命令，應由其他處理函數處理
+    // Return null means this is a command, should be handled by other functions
+    return null;
+  }
+  
+  // 如果 Gemini 已啟用且初始化成功
+  // If Gemini is enabled and initialized successfully
+  if (enableAIFeatures && genAI) {
+    try {
+      // 使用 Gemini 進行回應
+      // Use Gemini for response
+      const model = genAI.getGenerativeModel({ model: 'gemini-pro' });
+      
+      const prompt = `
+      你是一個LINE聊天機器人助手，請用50字以內簡短回答以下訊息。
+      使用友善、活潑的口吻並加上合適的emoji。
+      回答要簡潔、友好且有幫助。
+      
+      用戶訊息: ${text}
+      `;
+      
+      const result = await model.generateContent(prompt);
+      const response = result.response.text();
+      return response.trim();
+      
+    } catch (error) {
+      console.error('Gemini AI API 錯誤:', error);
+      // 失敗時使用後備回應系統
+      // Use fallback response system when failed
+    }
+  }
+  
+  // 如果未啟用 AI 功能或 API 錯誤，使用原有的回應系統
+  // If AI is not enabled or API error, use original response system
   
   // 檢查問候語
   // Check greetings
@@ -530,17 +585,44 @@ async function handleEvent(event) {
     
     // AI 對話功能 - 處理其他所有訊息
     // AI conversation feature - handle all other messages
-    const aiResponse = getAIResponse(text);
-    const aiMessage = createQuickReply(
-      `🤖 ${aiResponse}`,
-      [
-        { label: '📋 查看任務', text: '查看任務' },
-        { label: '🔍 搜索', text: '搜索' },
-        { label: '❓ 幫助', text: '幫助' }
-      ]
-    );
-    
-    return safeReplyMessage(event.replyToken, aiMessage);
+    try {
+      // 使用非同步的 getAIResponse 函數
+      // Use asynchronous getAIResponse function
+      const aiResponse = await getAIResponse(text);
+      
+      // 如果 getAIResponse 返回 null，表示這是一個命令，但沒有被前面的條件捕獲
+      // If getAIResponse returns null, it means this is a command but not captured by previous conditions
+      if (aiResponse === null) {
+        return safeReplyMessage(event.replyToken, {
+          type: 'text',
+          text: '我不認識這個指令。請輸入「幫助」查看可用的指令。'
+        });
+      }
+      
+      // 創建帶快速回覆按鈕的 AI 回應訊息
+      // Create AI response message with quick reply buttons
+      // Gemini 回應可能已經包含表情符號，所以不添加 🤖 前綴
+      // Gemini response may already contain emoji, so don't add 🤖 prefix
+      const aiMessage = createQuickReply(
+        aiResponse.startsWith('🤖') ? aiResponse : `🤖 ${aiResponse}`,
+        [
+          { label: '📋 查看任務', text: '查看任務' },
+          { label: '🔍 搜索', text: '搜索' },
+          { label: '❓ 幫助', text: '幫助' }
+        ]
+      );
+      
+      return safeReplyMessage(event.replyToken, aiMessage);
+    } catch (error) {
+      console.error('AI 回應錯誤:', error);
+      
+      // 發生錯誤時使用基本回應
+      // Use basic response when error occurs
+      return safeReplyMessage(event.replyToken, {
+        type: 'text',
+        text: '🤖 抱歉，我現在無法正確理解您的訊息。請稍後再試或輸入「幫助」查看可用功能。'
+      });
+    }
     
   } catch (err) {
     console.error('handleEvent 錯誤:', err);
@@ -598,13 +680,15 @@ app.get('/health', (req, res) => {
     configuration: {
       hasLineBotConfig: hasValidConfig,
       channelAccessToken: !!process.env.CHANNEL_ACCESS_TOKEN,
-      channelSecret: !!process.env.CHANNEL_SECRET
+      channelSecret: !!process.env.CHANNEL_SECRET,
+      geminiApiKey: !!process.env.GEMINI_API_KEY
     },
     features: {
       taskManagement: true,
       aiConversation: true,
       webSearch: true,
-      quickReply: hasValidConfig
+      quickReply: hasValidConfig,
+      geminiAI: enableAIFeatures && !!process.env.GEMINI_API_KEY
     }
   });
 });
@@ -615,19 +699,25 @@ app.get('/', (req, res) => {
   const configStatus = hasValidConfig ? 
     '<span style="color: green;">✅ 已配置</span>' : 
     '<span style="color: red;">❌ 未配置</span>';
+  
+  const geminiStatus = (enableAIFeatures && process.env.GEMINI_API_KEY) ? 
+    '<span style="color: green;">✅ 已啟用</span>' : 
+    '<span style="color: red;">❌ 未啟用</span>';
     
   res.send(`
     <h1>🤖 LINE Bot 增強版</h1>
-    <p>配置狀態：${configStatus}</p>
+    <p>LINE Bot 配置狀態：${configStatus}</p>
+    <p>Gemini AI 狀態：${geminiStatus}</p>
     <p>功能包括：</p>
     <ul>
       <li>📋 任務管理</li>
-      <li>🤖 AI 對話</li>
+      <li>🤖 ${(enableAIFeatures && process.env.GEMINI_API_KEY) ? 'Gemini AI 對話' : 'AI 對話'}</li>
       <li>🔍 網路搜索</li>
       <li>⚡ 快速回覆按鈕 ${hasValidConfig ? '(已啟用)' : '(需要 LINE Bot 配置)'}</li>
     </ul>
     <p>狀態：<a href="/health">健康檢查</a></p>
     ${!hasValidConfig ? '<p style="color: red;">⚠️ 請設置 CHANNEL_ACCESS_TOKEN 和 CHANNEL_SECRET 環境變數以啟用 LINE Bot 功能</p>' : ''}
+    ${!(enableAIFeatures && process.env.GEMINI_API_KEY) ? '<p style="color: orange;">⚠️ 請設置 GEMINI_API_KEY 環境變數並將 ENABLE_AI_FEATURES 設為 true 以啟用 Gemini AI</p>' : ''}
   `);
 });
 
@@ -636,7 +726,7 @@ app.get('/', (req, res) => {
 const port = process.env.PORT || 3000;
 app.listen(port, () => {
   console.log(`🚀 LINE Bot 服務器已啟動在端口 ${port}`);
-  console.log(`📋 功能：任務管理、AI 對話、網路搜索、快速回覆`);
+  console.log(`📋 功能：任務管理、${(enableAIFeatures && process.env.GEMINI_API_KEY) ? 'Gemini AI 對話' : 'AI 對話'}、網路搜索、快速回覆`);
   console.log(`🔗 Webhook URL: /webhook`);
   console.log(`❤️ 健康檢查: /health`);
   
@@ -645,6 +735,14 @@ app.listen(port, () => {
   } else {
     console.log(`⚠️ 缺少 LINE Bot 配置 - 請設置 CHANNEL_ACCESS_TOKEN 和 CHANNEL_SECRET 環境變數`);
     console.log(`📝 參考 .env.example 文件創建 .env 配置文件`);
+  }
+  
+  if (enableAIFeatures && process.env.GEMINI_API_KEY) {
+    console.log(`✅ Gemini AI 配置正常`);
+  } else if (enableAIFeatures) {
+    console.log(`⚠️ Gemini AI 已啟用但缺少 API 密鑰 - 請設置 GEMINI_API_KEY 環境變數`);
+  } else {
+    console.log(`ℹ️ Gemini AI 功能未啟用 - 設置 ENABLE_AI_FEATURES=true 以啟用`);
   }
 });
 
