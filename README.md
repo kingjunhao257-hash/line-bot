@@ -11,10 +11,12 @@
 - 進度統計分析
 
 ### 🤖 AI 對話功能
-- 智能回應系統
-- 支援多種對話主題
+- **Gemini AI 整合**：使用 Google Gemini Pro 模型提供智能對話
+- **備用回應系統**：當 AI 服務不可用時自動切換到規則式回應
+- 支援多種對話主題（問候、程式設計、學習等）
 - 隨機回應增加趣味性
 - 情境感知回應
+- 智能指令識別，避免不必要的 AI 調用
 
 ### 🔍 網路搜索功能
 - 支援關鍵字搜索
@@ -48,6 +50,14 @@ cp .env.example .env
 CHANNEL_ACCESS_TOKEN=your_channel_access_token_here
 CHANNEL_SECRET=your_channel_secret_here
 PORT=3000
+
+# AI 功能配置（可選）
+GEMINI_API_KEY=your_gemini_api_key_here
+ENABLE_AI_FEATURES=true
+
+# 除錯設置（可選）
+DEBUG_AI=false
+NODE_ENV=development
 ```
 
 ### 3. 獲取 LINE Bot 憑證
@@ -97,7 +107,7 @@ npm start
 ### 項目結構
 ```
 line-bot/
-├── server.js          # 主要服務器代碼
+├── line-bot.js       # 主要服務器代碼
 ├── package.json       # 項目配置
 ├── .env.example       # 環境變數範例
 ├── .gitignore         # Git 忽略文件
@@ -200,10 +210,39 @@ MIT License - 詳見 LICENSE 文件
 - GitHub Issues: [提交問題](https://github.com/your-username/line-bot/issues)
 - Email: your-email@example.com
 
+## 優化改進 🎯
+
+### 代碼優化
+- ✅ **模組化設計**：清晰的函數分離，易於維護和擴展
+- ✅ **完整的錯誤處理**：所有關鍵操作都有 try-catch 保護
+- ✅ **智能資源管理**：避免不必要的 AI API 調用
+- ✅ **優雅的降級機制**：AI 服務失敗時自動使用備用系統
+- ✅ **詳細的日誌記錄**：方便除錯和監控
+
+### 性能優化
+- ✅ **指令優先處理**：特定指令直接處理，不經過 AI
+- ✅ **異步處理優化**：使用 async/await 確保非阻塞操作
+- ✅ **資源節約**：開發模式下可關閉詳細日誌
+
+### 功能增強
+- ✅ **Gemini AI 整合**：支援 Google Gemini Pro 模型
+- ✅ **改進的搜索功能**：支援模擬和真實搜索切換
+- ✅ **更好的用戶體驗**：快速回覆按鈕、貼圖回應
+- ✅ **完整的配置管理**：支援環境變數和開發/生產模式
+
 ## 更新日誌 📝
 
-### v2.0.0 (最新版)
-- ✅ 新增 AI 對話功能
+### v2.1.0 (最新優化版)
+- ✅ **完整重構**：優化代碼結構和組織
+- ✅ **改進 AI 系統**：更好的錯誤處理和備用機制
+- ✅ **優化任務管理**：更清晰的狀態顯示和統計
+- ✅ **增強配置選項**：支援更多環境變數配置
+- ✅ **改進錯誤處理**：更友好的錯誤訊息和日誌
+- ✅ **性能優化**：減少不必要的 API 調用
+- ✅ **代碼品質**：完整的註解和文檔
+
+### v2.0.0
+- ✅ 新增 AI 對話功能（Gemini AI）
 - ✅ 新增網路搜索功能
 - ✅ 新增快速回覆按鈕
 - ✅ 新增貼圖和圖片回應
